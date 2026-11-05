@@ -72,3 +72,42 @@ extension StubbedNetwork { @Suite struct RemindersTests {
     }
 }
 }
+
+@Test func reminderRowsReadUTCWithOrWithoutZone() throws {
+    let expected = try Date("2026-11-05T10:15:00Z", strategy: .iso8601)
+    #expect(Reminder.parse("2026-11-05T10:15:00") == expected)
+    #expect(Reminder.parse("2026-11-05 10:15") == expected)
+    #expect(Reminder.parse("2026-11-05T11:15:00+01:00") == expected)
+    #expect(Reminder.parse("2026-11-05T10:15:00.000Z") == nil || Reminder.parse("2026-11-05T10:15:00.000Z") == expected)
+}
+
+extension StubbedNetwork { @Suite struct ReminderCRUDTests {
+    let client = YuvomiClient(
+        credential: DeviceCredential(server: ServerURL("https://home.example.com")!, token: "yuv_t", deviceRowID: 1),
+        session: StubProtocol.session()
+    )
+
+    init() {
+        StubProtocol.routes = [:]
+        StubProtocol.seen = []
+    }
+
+    @Test func missingReminderIsNil() async throws {
+        StubProtocol.routes = ["GET /api/v1/reminders": (200, #"{"data":null}"#)]
+        #expect(try await client.reminder(for: "task", id: 3) == nil)
+        #expect(StubProtocol.seen.first?.url?.query() == "entity_type=task&entity_id=3")
+    }
+
+    @Test func setSendsUTCInstant() async throws {
+        StubProtocol.routes = ["POST /api/v1/reminders": (201,
+            #"{"data":{"id":5,"entity_type":"task","entity_id":3,"remind_at":"2026-11-05T10:15:00","dismissed":0}}"#)]
+        let at = try Date("2026-11-05T10:15:00Z", strategy: .iso8601)
+        let saved = try await client.setReminder(for: "task", id: 3, at: at)
+        #expect(saved.remindAt == at)
+        let body = try #require(StubProtocol.seen.first?.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["remind_at"] as? String == "2026-11-05T10:15:00Z")
+        #expect(json["entity_id"] as? Int == 3)
+    }
+}
+}

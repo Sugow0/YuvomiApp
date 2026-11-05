@@ -97,3 +97,62 @@ public enum ReminderPlanner {
         )
     }
 }
+
+// MARK: - Managing reminders (POST/GET/DELETE /api/v1/reminders)
+
+/// A reminder row as the server stores it. One per entity and person for tasks.
+public struct Reminder: Sendable, Hashable, Identifiable, Decodable {
+    public let id: Int
+    public let entityType: String
+    public let entityId: Int
+    public let remindAt: Date
+
+    enum CodingKeys: String, CodingKey { case id, entityType, entityId, remindAt }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        entityType = try c.decode(String.self, forKey: .entityType)
+        entityId = try c.decode(Int.self, forKey: .entityId)
+        let raw = try c.decode(String.self, forKey: .remindAt)
+        guard let date = Self.parse(raw) else {
+            throw DecodingError.dataCorruptedError(forKey: .remindAt, in: c, debugDescription: "Bad remind_at \(raw)")
+        }
+        remindAt = date
+    }
+
+    /// Stored in UTC, usually without a zone suffix; older rows may carry one.
+    static func parse(_ raw: String) -> Date? {
+        var text = raw.replacingOccurrences(of: " ", with: "T")
+        if text.count == 16 { text += ":00" }
+        let hasZone = text.hasSuffix("Z") || text.dropFirst(19).contains("+") || text.dropFirst(19).contains("-")
+        if !hasZone { text = String(text.prefix(19)) + "Z" }
+        return try? Date(text, strategy: .iso8601)
+    }
+}
+
+extension YuvomiClient {
+    /// The caller's reminder on a task (or the first one on an event), or nil.
+    public func reminder(for entityType: String, id: Int) async throws -> Reminder? {
+        try await http.send(
+            "GET", "api/v1/reminders",
+            query: [URLQueryItem(name: "entity_type", value: entityType), URLQueryItem(name: "entity_id", value: "\(id)")],
+            as: DataEnvelope<Reminder?>.self
+        ).data
+    }
+
+    /// Creates or replaces the caller's reminder on an entity.
+    @discardableResult
+    public func setReminder(for entityType: String, id: Int, at date: Date) async throws -> Reminder {
+        struct Body: Encodable, Sendable { let entityType: String; let entityId: Int; let remindAt: String }
+        return try await http.send(
+            "POST", "api/v1/reminders",
+            body: Body(entityType: entityType, entityId: id, remindAt: date.formatted(Date.ISO8601FormatStyle())),
+            as: DataEnvelope<Reminder>.self
+        ).data
+    }
+
+    public func deleteReminder(_ id: Int) async throws {
+        _ = try await http.send("DELETE", "api/v1/reminders/\(id)", as: Empty.self)
+    }
+}
