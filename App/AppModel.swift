@@ -78,7 +78,7 @@ final class AppModel {
 
     func handle(url: URL) {
         switch url.host() {
-        case "tasks": requestedSection = .tasks; return
+        case "tasks": requestedSection = .today; return
         case "shopping": requestedSection = .shopping; return
         default: break
         }

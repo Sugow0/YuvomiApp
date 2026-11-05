@@ -45,7 +45,7 @@ final class TasksModel {
             tasks = try await client.tasks()
             publish()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userMessage
         }
     }
 
@@ -60,7 +60,7 @@ final class TasksModel {
             publish()
         } catch {
             update(task.id) { $0.status = previous }
-            errorMessage = error.localizedDescription
+            errorMessage = error.userMessage
         }
     }
 
@@ -71,7 +71,7 @@ final class TasksModel {
             tasks.append(try await client.addTask(title: title, dueDate: todayKey))
             publish()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userMessage
         }
     }
 

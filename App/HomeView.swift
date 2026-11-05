@@ -41,9 +41,9 @@ struct HomeView: View {
             NavigationStack {
                 switch selection ?? .today {
                 case .shopping: ShoppingView(client: client)
-                case .tasks: TasksView(client: client, userID: user?.id)
+                case .today: TasksView(client: client, userID: user?.id)
+                case .tasks: AllTasksView(client: client, userID: user?.id)
                 case .settings: SettingsView(credential: credential, user: user)
-                case let section: placeholder(section)
                 }
             }
         }
@@ -52,11 +52,6 @@ struct HomeView: View {
             selection = section
             model.requestedSection = nil
         }
-    }
-
-    private func placeholder(_ section: Section) -> some View {
-        ContentUnavailableView(section.rawValue, systemImage: section.icon, description: Text("Bientôt disponible."))
-            .navigationTitle(section.rawValue)
     }
 }
 
