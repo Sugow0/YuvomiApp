@@ -4,7 +4,10 @@ import YuvomiKit
 
 @main
 struct YuvomiWidgets: WidgetBundle {
-    var body: some Widget { TodayWidget() }
+    var body: some Widget {
+        TodayWidget()
+        AgendaWidget()
+    }
 }
 
 struct TodayWidget: Widget {
