@@ -33,6 +33,10 @@ struct EventDetailView: View {
                     }
                 }
             }
+            if event.birthdayKind == nil {
+                ReminderField(client: model.client, entityType: "event", entityID: event.eventID,
+                              anchor: event.isAllDay ? nil : event.start.date())
+            }
             if !event.assignedUsers.isEmpty {
                 Section("Pour") {
                     ForEach(event.assignedUsers, id: \.id) { Text($0.displayName ?? "Membre \($0.id)") }

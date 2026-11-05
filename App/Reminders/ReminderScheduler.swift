@@ -10,18 +10,20 @@ import BackgroundTasks
 @MainActor @Observable
 final class ReminderScheduler {
     nonisolated static let refreshTaskID = "fr.sugow.yuvomi.reminders"
-    nonisolated static let taskCategory = "yuvomi.task"
-    nonisolated static let completeAction = "yuvomi.complete"
+    nonisolated static let taskCategory = LocalReminders.taskCategory
+    nonisolated static let completeAction = LocalReminders.completeAction
 
     private let center = UNUserNotificationCenter.current()
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
-    private(set) var scheduledCount = 0
-    private(set) var lastSync: Date?
+    private(set) var scheduledCount = LocalReminders.scheduledCount
+    private(set) var lastSync = LocalReminders.lastSync
+    /// What the server has coming, for the list in Settings.
+    private(set) var upcoming: [UpcomingReminder] = []
     var lastError: String?
 
     var isEnabled: Bool {
-        get { AppGroup.defaults.object(forKey: "reminders.enabled") as? Bool ?? true }
-        set { AppGroup.defaults.set(newValue, forKey: "reminders.enabled") }
+        get { LocalReminders.isEnabled }
+        set { LocalReminders.isEnabled = newValue }
     }
 
     init() {
@@ -33,6 +35,9 @@ final class ReminderScheduler {
 
     func refreshAuthorization() async {
         authorization = await center.notificationSettings().authorizationStatus
+        // The widgets may have synced meanwhile.
+        scheduledCount = LocalReminders.scheduledCount
+        lastSync = LocalReminders.lastSync
     }
 
     /// Asks once; afterwards the person changes it in system Settings.
@@ -42,55 +47,41 @@ final class ReminderScheduler {
     }
 
     func sync(using credential: DeviceCredential) async {
-        await refreshAuthorization()
-        guard isEnabled, authorization == .authorized || authorization == .provisional else {
-            await removeAll()
-            return
-        }
+        let client = YuvomiClient(credential: credential)
         do {
-            let upcoming = try await YuvomiClient(credential: credential).upcomingReminders()
-            let pending = await center.pendingNotificationRequests().map(\.identifier)
-            let plan = ReminderPlanner.plan(upcoming: upcoming, scheduled: pending)
-            center.removePendingNotificationRequests(withIdentifiers: plan.remove)
-            for reminder in plan.add {
-                try await center.add(Self.request(for: reminder))
-            }
-            scheduledCount = min(upcoming.filter { $0.firesAt > .now }.count, ReminderPlanner.limit)
-            lastSync = .now
+            try await LocalReminders.sync(client)
+            upcoming = (try? await client.upcomingReminders()) ?? upcoming
             lastError = nil
         } catch {
             // Offline: keep what is scheduled, it was right at the last sync.
             lastError = error.userMessage
         }
+        await refreshAuthorization()
         scheduleBackgroundRefresh()
     }
 
     func removeAll() async {
-        let ours = await center.pendingNotificationRequests().map(\.identifier)
-            .filter { $0.hasPrefix(ReminderPlanner.prefix) }
-        center.removePendingNotificationRequests(withIdentifiers: ours)
+        await LocalReminders.removeAll()
+        upcoming = []
         scheduledCount = 0
     }
 
-    private static func request(for reminder: UpcomingReminder) -> UNNotificationRequest {
-        let content = UNMutableNotificationContent()
-        content.title = reminder.entityTitle ?? reminder.kindLabel
-        content.body = reminder.kindLabel
-        content.sound = .default
-        content.threadIdentifier = reminder.entityType
-        content.userInfo = ["entityType": reminder.entityType, "entityId": reminder.entityId]
-        if reminder.entityType == "task" { content.categoryIdentifier = taskCategory }
-
-        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: reminder.firesAt)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)
-        return UNNotificationRequest(identifier: ReminderPlanner.identifier(for: reminder), content: content, trigger: trigger)
+    /// Deletes on the server, then reschedules.
+    func delete(_ reminder: UpcomingReminder, using credential: DeviceCredential) async {
+        upcoming.removeAll { $0.id == reminder.id }
+        do {
+            try await YuvomiClient(credential: credential).deleteReminder(reminder.id)
+        } catch {
+            lastError = error.userMessage
+        }
+        await sync(using: credential)
     }
 
-    /// iOS wakes the app now and then to pick up reminders added on the server meanwhile.
+    /// iOS wakes the app now and then (at best every ~15 min) to pick up reminders added elsewhere.
     func scheduleBackgroundRefresh() {
         #if os(iOS)
         let request = BGAppRefreshTaskRequest(identifier: Self.refreshTaskID)
-        request.earliestBeginDate = .now.addingTimeInterval(60 * 60)
+        request.earliestBeginDate = .now.addingTimeInterval(15 * 60)
         try? BGTaskScheduler.shared.submit(request)
         #endif
     }

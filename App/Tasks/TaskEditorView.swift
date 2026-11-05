@@ -35,6 +35,12 @@ struct TaskEditorView: View {
 
     private var isNew: Bool { task == nil }
 
+    /// Due day at its time, or 09:00 without one: what "15 min avant" counts from.
+    private var reminderAnchor: Date? {
+        guard hasDueDate else { return nil }
+        return hasTime ? DayKey.time(DayKey.timeKey(time), on: dueDay) : DayKey.time("09:00", on: dueDay)
+    }
+
     /// What would be sent now, with the date toggles applied.
     private var currentDraft: TaskDraft {
         var d = draft
@@ -110,6 +116,7 @@ struct TaskEditorView: View {
             }
 
             if let task {
+                ReminderField(client: model.client, entityType: "task", entityID: task.id, anchor: reminderAnchor)
                 subtasksSection(task)
                 Section {
                     Button("Supprimer la tâche", systemImage: "trash", role: .destructive) { confirmDelete = true }
