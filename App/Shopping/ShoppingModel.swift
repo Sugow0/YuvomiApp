@@ -151,7 +151,7 @@ final class ShoppingModel {
     }
 
     private func report(_ error: any Error) {
-        errorMessage = error.localizedDescription
+        errorMessage = error.userMessage
     }
 
     /// "2 L lait" or "lait 2 L" stay as typed; a leading number becomes the quantity: "3 pommes" → ("pommes", "3").

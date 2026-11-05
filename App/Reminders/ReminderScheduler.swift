@@ -60,7 +60,7 @@ final class ReminderScheduler {
             lastError = nil
         } catch {
             // Offline: keep what is scheduled, it was right at the last sync.
-            lastError = error.localizedDescription
+            lastError = error.userMessage
         }
         scheduleBackgroundRefresh()
     }

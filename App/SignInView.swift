@@ -180,7 +180,7 @@ struct SignInView: View {
         isWorking = true
         errorMessage = nil
         defer { isWorking = false }
-        do { try await work() } catch { errorMessage = error.localizedDescription }
+        do { try await work() } catch { errorMessage = error.userMessage }
     }
 }
 
