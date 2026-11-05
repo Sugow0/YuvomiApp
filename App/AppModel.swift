@@ -80,6 +80,7 @@ final class AppModel {
         switch url.host() {
         case "tasks": requestedSection = .today; return
         case "shopping": requestedSection = .shopping; return
+        case "calendar": requestedSection = .calendar; return
         default: break
         }
         guard let link = PairingLink(url) else { return }

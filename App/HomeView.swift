@@ -9,6 +9,7 @@ struct HomeView: View {
 
     enum Section: String, CaseIterable, Identifiable, Hashable {
         case today = "Aujourd'hui"
+        case calendar = "Agenda"
         case shopping = "Courses"
         case tasks = "Tâches"
         case settings = "Réglages"
@@ -17,6 +18,7 @@ struct HomeView: View {
         var icon: String {
             switch self {
             case .today: "sun.max"
+            case .calendar: "calendar"
             case .shopping: "cart"
             case .tasks: "checklist"
             case .settings: "gearshape"
@@ -42,6 +44,7 @@ struct HomeView: View {
                 switch selection ?? .today {
                 case .shopping: ShoppingView(client: client)
                 case .today: TasksView(client: client, userID: user?.id)
+                case .calendar: CalendarView(client: client)
                 case .tasks: AllTasksView(client: client, userID: user?.id)
                 case .settings: SettingsView(credential: credential, user: user)
                 }
