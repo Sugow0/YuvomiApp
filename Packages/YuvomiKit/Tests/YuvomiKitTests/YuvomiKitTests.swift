@@ -42,7 +42,14 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
+    /// A current server unless a test routes `GET /api/v1/version` itself. Not recorded in `seen`.
+    static let modernVersion = (200, #"{"product":"yuvomi","client_api":1}"#)
+
     override func startLoading() {
+        let key = "\(request.httpMethod ?? "GET") \(request.url?.path() ?? "")"
+        if key == "GET /api/v1/version", Self.routes[key] == nil {
+            return answer(Self.modernVersion)
+        }
         var recorded = request
         if let stream = request.httpBodyStream {
             stream.open()
@@ -56,8 +63,11 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
             recorded.httpBody = data
         }
         Self.seen.append(recorded)
-        let key = "\(request.httpMethod ?? "GET") \(request.url?.path() ?? "")"
-        let (status, body) = Self.routes[key] ?? (404, #"{"error":"Not found","code":404}"#)
+        answer(Self.routes[key] ?? (404, #"{"error":"Not found","code":404}"#))
+    }
+
+    private func answer(_ route: (Int, String)) {
+        let (status, body) = route
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
@@ -116,6 +126,15 @@ extension StubbedNetwork { @Suite struct AuthFlowTests {
         }
     }
 
+    @Test func olderServerIsRejectedBeforeThePassword() async throws {
+        // 1.x answers /version without `client_api` and has no device routes.
+        StubProtocol.routes = ["GET /api/v1/version": (200, #"{"app_name":"Yuvomi","setup_required":false}"#)]
+        await #expect(throws: ClientError.unsupportedServer) {
+            try await auth.signIn(server: server, username: "me", password: "pw")
+        }
+        #expect(!StubProtocol.seen.contains { $0.url?.path() == "/api/v1/auth/login" })
+    }
+
     @Test func pairingRedeemsCode() async throws {
         StubProtocol.routes = [
             "POST /api/v1/auth/devices/pair/redeem": (201, #"{"data":{"id":9},"credential":"yuv_paired"}"#),
@@ -131,3 +150,9 @@ extension StubbedNetwork { @Suite struct AuthFlowTests {
 
 /// Every suite that uses `StubProtocol` lives here: its routes are global state.
 @Suite(.serialized) enum StubbedNetwork {}
+
+@Test func cancellationIsNotShownToThePerson() {
+    #expect(URLError(.cancelled).userMessage == nil)
+    #expect(CancellationError().userMessage == nil)
+    #expect(URLError(.notConnectedToInternet).userMessage != nil)
+}

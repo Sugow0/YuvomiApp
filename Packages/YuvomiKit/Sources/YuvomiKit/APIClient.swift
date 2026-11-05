@@ -18,9 +18,13 @@ public struct APIError: Error, Sendable, Equatable, Decodable, LocalizedError {
 public enum ClientError: Error, Sendable, Equatable, LocalizedError {
     case notHTTP
     case unexpectedStatus(Int)
+    /// Not a Yuvomi server, or one older than 2.84 (no device sign-in yet).
+    case unsupportedServer
 
     public var errorDescription: String? {
         switch self {
+        case .unsupportedServer:
+            "Ce serveur Yuvomi est trop ancien pour l'app. Mettez-le à jour en version 2.84 ou plus récente."
         case .notHTTP: "Réponse invalide du serveur."
         case .unexpectedStatus(let status): "Le serveur a répondu \(status)."
         }
@@ -76,3 +80,16 @@ struct HTTP: Sendable {
 }
 
 struct Empty: Codable, Sendable {}
+
+extension Error {
+    /// True when a request stopped because its task went away (screen left, pull-to-refresh
+    /// restarted, …) rather than because something failed.
+    public var isCancellation: Bool {
+        if self is CancellationError { return true }
+        if let url = self as? URLError, url.code == .cancelled { return true }
+        return (self as NSError).domain == NSURLErrorDomain && (self as NSError).code == NSURLErrorCancelled
+    }
+
+    /// What to show the person, or nil when there is nothing to tell (cancellation).
+    public var userMessage: String? { isCancellation ? nil : localizedDescription }
+}

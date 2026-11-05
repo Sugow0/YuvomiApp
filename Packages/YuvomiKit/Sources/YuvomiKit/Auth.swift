@@ -34,6 +34,7 @@ public struct AuthService: Sendable {
 
     public func signIn(server: ServerURL, username: String, password: String) async throws -> PasswordResult {
         let http = HTTP(server: server, session: makeSession())
+        try await Self.requireNativeAPI(http)
         let response: LoginResponse = try await http.send(
             "POST", "api/v1/auth/login", body: LoginBody(username: username, password: password)
         )
@@ -52,6 +53,7 @@ public struct AuthService: Sendable {
 
     public func redeemPairing(_ link: PairingLink) async throws -> DeviceCredential {
         let http = HTTP(server: link.server, session: makeSession())
+        try await Self.requireNativeAPI(http)
         let response: DeviceResponse = try await http.send(
             "POST", "api/v1/auth/devices/pair/redeem",
             body: RedeemBody(code: link.code, name: device.name, platform: device.platform, deviceId: device.id)
@@ -82,6 +84,17 @@ public struct AuthService: Sendable {
     public static func signOut(_ credential: DeviceCredential, session: URLSession = .shared) async throws {
         let http = HTTP(server: credential.server, session: session, bearer: credential.token)
         _ = try await http.send("DELETE", "api/v1/auth/devices/\(credential.deviceRowID)", as: Empty.self)
+    }
+
+    /// Native-client contract version this app is built against (`client_api`, server 2.84+).
+    public static let requiredClientAPI = 1
+
+    /// `GET /api/v1/version` is public. Older servers answer without `client_api`:
+    /// fail here with a clear message instead of a confusing 401/404 after the password.
+    static func requireNativeAPI(_ http: HTTP) async throws {
+        struct Version: Decodable { let product: String?; let clientApi: Int? }
+        let version = try await http.send("GET", "api/v1/version", as: Version.self)
+        guard (version.clientApi ?? 0) >= requiredClientAPI else { throw ClientError.unsupportedServer }
     }
 }
 

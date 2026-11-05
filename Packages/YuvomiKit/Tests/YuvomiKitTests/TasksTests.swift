@@ -14,6 +14,29 @@ import Testing
     #expect(buckets.overdue.map(\.id) == [1])
     #expect(buckets.today.map(\.id) == [3, 2])
     #expect(buckets.undated.map(\.id) == [4])
+    #expect(buckets.upcoming.map(\.id) == [5])
+}
+
+@Test func draftSendsNullsToClearFields() throws {
+    let draft = TaskDraft(title: "  Vider le lave-vaisselle ", description: " ", dueDate: nil, dueTime: "08:00",
+                          assignedTo: [2, 3])
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let json = try #require(try JSONSerialization.jsonObject(with: encoder.encode(draft)) as? [String: Any])
+    #expect(json["title"] as? String == "Vider le lave-vaisselle")
+    #expect(json["description"] is NSNull)
+    #expect(json["due_date"] is NSNull)
+    #expect(json["due_time"] is NSNull) // no time without a date
+    #expect(json["assigned_to"] as? [Int] == [2, 3])
+}
+
+@Test func draftRoundTripsATask() {
+    let task = TaskItem(id: 1, title: "Pharmacie", priority: .high, category: "health", dueDate: "2026-11-06",
+                        assignedUsers: [.init(id: 4, displayName: "Sam", color: nil)])
+    let draft = TaskDraft(task)
+    #expect(draft.category == "health")
+    #expect(draft.assignedTo == [4])
+    #expect(draft.description.isEmpty)
 }
 
 @Test func dayKeyIsISO() throws {
@@ -67,6 +90,39 @@ extension StubbedNetwork { @Suite struct TasksTests {
             """)]
         let change = try await client.setTaskStatus(1, .done)
         #expect(change.nextDueDate == "2026-11-11")
+    }
+
+    @Test func updateUsesPutAndDetailDecodesSubtasks() async throws {
+        StubProtocol.routes = [
+            "PUT /api/v1/tasks/7": (200, """
+                {"data":{"id":7,"title":"Jardin","status":"open","priority":"low","is_recurring":1,
+                         "description":"Tondre","assigned_users":[]}}
+                """),
+            "GET /api/v1/tasks/7": (200, """
+                {"data":{"id":7,"title":"Jardin","status":"open","priority":"low","is_recurring":0,
+                         "subtasks":[{"id":8,"title":"Haie","status":"open","priority":"none","parent_task_id":7}]}}
+                """),
+        ]
+        let saved = try await client.updateTask(7, TaskDraft(title: "Jardin", priority: .low))
+        #expect(saved.isRecurring)
+        #expect(saved.description == "Tondre")
+        let detail = try await client.task(7)
+        #expect(detail.subtasks.map(\.title) == ["Haie"])
+        #expect(StubProtocol.seen.first?.httpMethod == "PUT")
+    }
+
+    @Test func listingCanIncludeFutureStarts() async throws {
+        StubProtocol.routes = ["GET /api/v1/tasks": (200, #"{"data":[]}"#)]
+        _ = try await client.tasks(includeFuture: true)
+        #expect(StubProtocol.seen.first?.url?.query() == "status=open&status=in_progress&include_future=1")
+    }
+
+    @Test func subtaskPostsParentID() async throws {
+        StubProtocol.routes = ["POST /api/v1/tasks": (201, #"{"data":{"id":11,"title":"Haie","status":"open"}}"#)]
+        _ = try await client.addSubtask(to: 7, title: "Haie")
+        let body = try #require(StubProtocol.seen.first?.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["parent_task_id"] as? Int == 7)
     }
 }
 }
