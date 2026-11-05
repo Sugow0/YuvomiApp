@@ -46,6 +46,8 @@ struct AgendaProvider: TimelineProvider {
             // Meals are optional: the module may be switched off.
             async let week = try? client.mealWeek(containing: today)
             let agenda = TodayAgenda.remaining(try await events)
+            // Widgets reload every 15–60 min: a free chance to pick up new reminders.
+            _ = try? await LocalReminders.sync(client)
             let meals = await week.map { TodayAgenda.meals($0, on: today) } ?? []
             SnapshotStore.update { $0.agenda = agenda; $0.meals = meals }
             return AgendaEntry(date: .now, state: .ready, events: agenda, meals: meals)

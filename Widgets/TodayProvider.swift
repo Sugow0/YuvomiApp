@@ -56,6 +56,8 @@ struct TodayProvider: TimelineProvider {
             async let tasks = client.tasks()
             async let lists = client.shoppingLists()
             let (fetchedTasks, fetchedLists) = try await (tasks, lists)
+            // Widgets reload every 15–60 min: a free chance to pick up new reminders.
+            _ = try? await LocalReminders.sync(client)
             let selectedID = AppGroup.defaults.object(forKey: "shopping.selectedList") as? Int
             let list = fetchedLists.first { $0.id == selectedID } ?? fetchedLists.first
             SnapshotStore.update {
