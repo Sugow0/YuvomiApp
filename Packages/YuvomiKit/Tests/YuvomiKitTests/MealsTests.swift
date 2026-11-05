@@ -50,6 +50,18 @@ extension StubbedNetwork { @Suite struct MealsTests {
         #expect(json == ["listId": 3])
     }
 
+    @Test func updateSendsOnlyThisMealsFields() async throws {
+        StubProtocol.routes = ["PUT /api/v1/meals/7": (200,
+            #"{"data":{"id":7,"date":"2026-11-06","meal_type":"lunch","title":"Gratin","ingredients":[]}}"#)]
+        let meal = try await client.updateMeal(7, date: "2026-11-06", kind: .lunch, title: "Gratin", notes: "  ")
+        #expect(meal.kind == .lunch)
+        let request = try #require(StubProtocol.seen.first)
+        #expect(request.url?.query() == nil) // no scope=series
+        let body = try #require(request.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["notes"] is NSNull)
+    }
+
     @Test func createSendsSnakeCaseMealType() async throws {
         StubProtocol.routes = ["POST /api/v1/meals": (201,
             #"{"data":{"id":9,"date":"2026-11-06","meal_type":"lunch","title":"Quiche","ingredients":[]}}"#)]

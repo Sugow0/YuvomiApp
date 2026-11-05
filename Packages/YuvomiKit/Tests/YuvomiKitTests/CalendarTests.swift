@@ -42,7 +42,7 @@ private func day(_ d: Int, _ h: Int = 0, _ m: Int = 0) -> Date {
     #expect(json["title"] as? String == "Dentiste")
     #expect((json["start_datetime"] as? String)?.count == 16)
     #expect(json["location"] is NSNull)
-    #expect(json["assigned_to"] == nil)
+    #expect(json["assigned_to"] as? [Int] == [])
     #expect(EventDraft.format(day(5, 9), dayOnly: true, calendar: paris) == "2026-11-05")
     #expect(EventDraft.format(day(5, 9, 5), dayOnly: false, calendar: paris) == "2026-11-05T09:05")
 }
@@ -73,6 +73,19 @@ extension StubbedNetwork { @Suite struct CalendarTests {
         #expect(Set(events.map(\.id)).count == 2)
         #expect(events.first?.isEditable == false)
         #expect(StubProtocol.seen.first?.url?.query()?.hasPrefix("from=2026-11-05&to=") == true)
+    }
+
+    @Test func updatePutsTheDraft() async throws {
+        StubProtocol.routes = ["PUT /api/v1/calendar/4": (200,
+            #"{"data":{"id":4,"title":"Piscine","start_datetime":"2026-11-05T18:00","end_datetime":null,"all_day":0}}"#)]
+        let event = CalendarEvent(eventID: 4, title: "Piscine", start: EventTime("2026-11-05T17:00")!,
+                                  end: EventTime("2026-11-05T18:00")!)
+        var draft = EventDraft(event)
+        #expect(draft.end.timeIntervalSince(draft.start) == 3600)
+        draft.start = draft.start.addingTimeInterval(3600)
+        let saved = try await client.updateEvent(4, draft)
+        #expect(saved.title == "Piscine")
+        #expect(StubProtocol.seen.first?.httpMethod == "PUT")
     }
 
     @Test func deleteAcceptsNoContent() async throws {

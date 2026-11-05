@@ -182,6 +182,19 @@ public struct EventDraft: Sendable, Equatable, Encodable {
         self.location = location; self.notes = notes; self.assignedTo = assignedTo
     }
 
+    /// Prefilled from an existing event, for editing.
+    public init(_ event: CalendarEvent, calendar: Calendar = .current) {
+        let start = event.start.date(in: calendar) ?? .now
+        var end = event.end?.date(in: calendar) ?? start.addingTimeInterval(event.isAllDay ? 0 : 3600)
+        if event.isAllDay, event.end?.isDayOnly == false {
+            // A day event ending at midnight: show the last day it covers.
+            end = event.days(in: calendar)?.upperBound ?? start
+        }
+        self.init(title: event.title, isAllDay: event.isAllDay, start: start, end: end,
+                  location: event.location ?? "", notes: event.description ?? "",
+                  assignedTo: event.assignedUsers.map(\.id))
+    }
+
     enum CodingKeys: String, CodingKey { case title, allDay, startDatetime, endDatetime, location, description, assignedTo }
 
     /// Wall-clock values without offset: the server reads them as household time.
@@ -195,7 +208,8 @@ public struct EventDraft: Sendable, Equatable, Encodable {
         try c.encode(place.isEmpty ? nil : place, forKey: .location)
         let text = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         try c.encode(text.isEmpty ? nil : text, forKey: .description)
-        if !assignedTo.isEmpty { try c.encode(assignedTo, forKey: .assignedTo) }
+        // Always sent: on PUT an empty list clears the people, an absent one would keep them.
+        try c.encode(assignedTo, forKey: .assignedTo)
     }
 
     static func format(_ date: Date, dayOnly: Bool, calendar: Calendar = .current) -> String {
@@ -226,6 +240,11 @@ extension YuvomiClient {
             headers: ["Idempotency-Key": UUID().uuidString],
             as: DataEnvelope<CalendarEvent>.self
         ).data
+    }
+
+    /// Only for plain local events (`CalendarEvent.isEditable`): series need occurrence scopes.
+    public func updateEvent(_ eventID: Int, _ draft: EventDraft) async throws -> CalendarEvent {
+        try await http.send("PUT", "api/v1/calendar/\(eventID)", body: draft, as: DataEnvelope<CalendarEvent>.self).data
     }
 
     public func deleteEvent(_ eventID: Int) async throws {

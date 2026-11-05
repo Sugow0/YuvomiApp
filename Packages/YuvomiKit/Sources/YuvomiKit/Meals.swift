@@ -151,6 +151,27 @@ extension YuvomiClient {
         ).data
     }
 
+    /// Changes this meal only, also when it belongs to a weekly series.
+    public func updateMeal(_ id: Int, date: String, kind: Meal.Kind, title: String, notes: String?) async throws -> Meal {
+        struct Body: Encodable, Sendable {
+            let date: String; let mealType: Meal.Kind; let title: String; let notes: String?
+            enum CodingKeys: String, CodingKey { case date, mealType, title, notes }
+            func encode(to encoder: any Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(date, forKey: .date)
+                try c.encode(mealType, forKey: .mealType)
+                try c.encode(title, forKey: .title)
+                try c.encode(notes, forKey: .notes) // null clears; absent would keep the old notes
+            }
+        }
+        let text = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await http.send(
+            "PUT", "api/v1/meals/\(id)",
+            body: Body(date: date, mealType: kind, title: title, notes: text?.isEmpty == false ? text : nil),
+            as: DataEnvelope<Meal>.self
+        ).data
+    }
+
     public func deleteMeal(_ id: Int) async throws {
         _ = try await http.send("DELETE", "api/v1/meals/\(id)", as: Empty.self)
     }
