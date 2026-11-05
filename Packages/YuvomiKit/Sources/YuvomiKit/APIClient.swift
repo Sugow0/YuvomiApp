@@ -75,6 +75,8 @@ struct HTTP: Sendable {
             if let apiError = try? Self.decoder.decode(APIError.self, from: data) { throw apiError }
             throw ClientError.unexpectedStatus(http.statusCode)
         }
+        // 204 No Content (e.g. DELETE /calendar/:id).
+        if data.isEmpty, let empty = Empty() as? Response { return empty }
         return try Self.decoder.decode(Response.self, from: data)
     }
 }
