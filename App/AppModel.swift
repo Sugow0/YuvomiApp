@@ -82,6 +82,7 @@ final class AppModel {
         case "shopping": requestedSection = .shopping; return
         case "calendar": requestedSection = .calendar; return
         case "meals": requestedSection = .meals; return
+        case "notes": requestedSection = .notes; return
         default: break
         }
         guard let link = PairingLink(url) else { return }

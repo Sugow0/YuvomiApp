@@ -12,6 +12,7 @@ struct HomeView: View {
         case calendar = "Agenda"
         case shopping = "Courses"
         case meals = "Repas"
+        case notes = "Notes"
         case tasks = "Tâches"
         case settings = "Réglages"
 
@@ -22,6 +23,7 @@ struct HomeView: View {
             case .calendar: "calendar"
             case .shopping: "cart"
             case .meals: "fork.knife"
+            case .notes: "note.text"
             case .tasks: "checklist"
             case .settings: "gearshape"
             }
@@ -48,6 +50,7 @@ struct HomeView: View {
                 case .today: TasksView(client: client, userID: user?.id)
                 case .calendar: CalendarView(client: client)
                 case .meals: MealsView(client: client)
+                case .notes: NotesView(client: client)
                 case .tasks: AllTasksView(client: client, userID: user?.id)
                 case .settings: SettingsView(credential: credential, user: user)
                 }
