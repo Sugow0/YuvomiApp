@@ -31,6 +31,9 @@ public enum ClientError: Error, Sendable, Equatable, LocalizedError {
     }
 }
 
+/// A body whose keys go out exactly as written, not snake_cased.
+protocol VerbatimKeys {}
+
 /// Thin JSON transport. `bearer` is set once the device holds a credential.
 struct HTTP: Sendable {
     let server: ServerURL
@@ -42,6 +45,9 @@ struct HTTP: Sendable {
         e.keyEncodingStrategy = .convertToSnakeCase
         return e
     }()
+
+    /// For the few routes that read camelCase keys (e.g. `listId` in /meals).
+    static let verbatimEncoder = JSONEncoder()
 
     static let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -66,7 +72,7 @@ struct HTTP: Sendable {
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try Self.encoder.encode(body)
+            request.httpBody = try (body is any VerbatimKeys ? Self.verbatimEncoder : Self.encoder).encode(body)
         }
 
         let (data, response) = try await session.data(for: request)
