@@ -151,6 +151,40 @@ struct TodayTasksIntent: AppIntent {
     }
 }
 
+struct TodayAgendaIntent: AppIntent {
+    static let title: LocalizedStringResource = "Agenda du jour"
+    static let description = IntentDescription("Lit les événements qui restent aujourd'hui.")
+
+    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<[String]> {
+        let events = TodayAgenda.remaining(try await signedInClient().events(from: .now, to: .now))
+        return .result(value: events.map(\.title), dialog: IntentDialog(stringLiteral: Self.summary(events)))
+    }
+
+    static func summary(_ events: [AgendaItem]) -> String {
+        if events.isEmpty { return "Plus rien de prévu aujourd'hui." }
+        let parts = events.prefix(4).map { item -> String in
+            if item.isAllDay { return "\(item.title), toute la journée" }
+            guard let start = item.start else { return item.title }
+            if start < .now { return "\(item.title), en cours" }
+            return "\(item.title) à \(start.formatted(date: .omitted, time: .shortened))"
+        }
+        let more = events.count > 4 ? ", et \(events.count - 4) autres" : ""
+        return "Aujourd'hui : \(parts.formatted(.list(type: .and)))\(more)."
+    }
+}
+
+struct TodayMealsIntent: AppIntent {
+    static let title: LocalizedStringResource = "Repas du jour"
+    static let description = IntentDescription("Dit ce qui est prévu à manger aujourd'hui.")
+
+    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<[String]> {
+        let today = TodayBuckets.dayKey()
+        let meals = TodayAgenda.meals(try await signedInClient().mealWeek(containing: today), on: today)
+        let sentence = TodayAgenda.mealSentence(meals, hour: Calendar.current.component(.hour, from: .now))
+        return .result(value: meals.map(\.title), dialog: IntentDialog(stringLiteral: sentence))
+    }
+}
+
 struct OpenShoppingIntent: AppIntent {
     static let title: LocalizedStringResource = "Ouvrir les courses"
     static let openAppWhenRun = true
@@ -204,6 +238,25 @@ struct YuvomiShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Tâches du jour",
             systemImageName: "sun.max"
+        )
+        AppShortcut(
+            intent: TodayAgendaIntent(),
+            phrases: [
+                "Qu'est-ce que j'ai aujourd'hui dans \(.applicationName)",
+                "Mon agenda du jour dans \(.applicationName)",
+            ],
+            shortTitle: "Agenda du jour",
+            systemImageName: "calendar"
+        )
+        AppShortcut(
+            intent: TodayMealsIntent(),
+            phrases: [
+                "Qu'est-ce qu'on mange dans \(.applicationName)",
+                "Qu'est-ce qu'on mange ce soir dans \(.applicationName)",
+                "Le repas du jour dans \(.applicationName)",
+            ],
+            shortTitle: "Repas du jour",
+            systemImageName: "fork.knife"
         )
         AppShortcut(
             intent: OpenShoppingIntent(),
