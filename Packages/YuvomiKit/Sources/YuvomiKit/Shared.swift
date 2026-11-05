@@ -22,6 +22,9 @@ public struct TodaySnapshot: Sendable, Codable, Equatable {
     public var tasks: [TaskItem]
     public var shoppingListName: String?
     public var shoppingOpenCount: Int?
+    /// Today's events and meals for the Agenda widget; nil until first fetched.
+    public var agenda: [AgendaItem]?
+    public var meals: [MealSummary]?
 
     public init(savedAt: Date = .now, tasks: [TaskItem] = [], shoppingListName: String? = nil, shoppingOpenCount: Int? = nil) {
         self.savedAt = savedAt
