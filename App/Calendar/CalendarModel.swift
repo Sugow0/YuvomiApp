@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WidgetKit
 import YuvomiKit
 
 /// Upcoming household events, from today, 30 days at a time.
@@ -27,6 +28,7 @@ final class CalendarModel {
         async let members = try? client.householdMembers()
         do {
             events = try await client.events(from: windowStart, to: windowEnd)
+            WidgetCenter.shared.reloadTimelines(ofKind: "fr.sugow.yuvomi.agenda")
         } catch {
             errorMessage = error.userMessage
         }
@@ -57,11 +59,23 @@ final class CalendarModel {
         }
     }
 
+    func update(_ event: CalendarEvent, with draft: EventDraft) async -> Bool {
+        do {
+            _ = try await client.updateEvent(event.eventID, draft)
+            await load()
+            return true
+        } catch {
+            errorMessage = error.userMessage
+            return false
+        }
+    }
+
     func delete(_ event: CalendarEvent) async -> Bool {
         let backup = events
         events.removeAll { $0.eventID == event.eventID }
         do {
             try await client.deleteEvent(event.eventID)
+            WidgetCenter.shared.reloadTimelines(ofKind: "fr.sugow.yuvomi.agenda")
             return true
         } catch {
             events = backup

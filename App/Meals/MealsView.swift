@@ -65,7 +65,7 @@ struct MealsView: View {
             }
         }
         .sheet(item: $newMealDay) { item in
-            NavigationStack { NewMealView(model: model, day: item.day) }
+            NavigationStack { MealEditorView(model: model, day: item.day) }
                 #if os(macOS)
                 .frame(minWidth: 420, minHeight: 380)
                 #endif
@@ -141,6 +141,7 @@ struct MealDetailView: View {
     let mealID: Int
     @State private var newIngredient = ""
     @State private var confirmDelete = false
+    @State private var editing = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -212,6 +213,19 @@ struct MealDetailView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { Button("Modifier") { editing = true } }
+            }
+            .sheet(isPresented: $editing) {
+                NavigationStack {
+                    MealEditorView(model: model, day: meal.date, meal: meal) {
+                        if model.meal(mealID) == nil { dismiss() } // moved to another week
+                    }
+                }
+                #if os(macOS)
+                .frame(minWidth: 420, minHeight: 380)
+                #endif
+            }
             .confirmationDialog("Supprimer « \(meal.title) » ?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Supprimer", role: .destructive) {
                     Task { if await model.delete(meal) { dismiss() } }
@@ -223,22 +237,30 @@ struct MealDetailView: View {
     }
 }
 
-struct NewMealView: View {
+/// Create a meal, or edit one (`meal` set): ingredients are then managed on the detail screen.
+struct MealEditorView: View {
     let model: MealsModel
+    var meal: Meal?
+    var onSaved: () -> Void = {}
     @State private var day: Date
     @State private var kind: Meal.Kind
-    @State private var title = ""
+    @State private var title: String
+    @State private var notes: String
     @State private var ingredients = ""
     @State private var saving = false
     @FocusState private var titleFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
-    init(model: MealsModel, day: String) {
+    init(model: MealsModel, day: String, meal: Meal? = nil, onSaved: @escaping () -> Void = {}) {
         self.model = model
+        self.meal = meal
+        self.onSaved = onSaved
         _day = State(initialValue: DayKey.date(day) ?? .now)
         // Evening by default; the morning before 10 suggests lunch.
         let hour = Calendar.current.component(.hour, from: .now)
-        _kind = State(initialValue: hour < 10 ? .lunch : .dinner)
+        _kind = State(initialValue: meal?.kind ?? (hour < 10 ? .lunch : .dinner))
+        _title = State(initialValue: meal?.title ?? "")
+        _notes = State(initialValue: meal?.notes ?? "")
     }
 
     var body: some View {
@@ -250,37 +272,49 @@ struct NewMealView: View {
                 }
                 DatePicker("Jour", selection: $day, displayedComponents: .date)
             }
-            Section {
-                TextField("2 oignons, du riz, de la crème…", text: $ingredients, axis: .vertical)
-                    .lineLimit(2...6)
-            } header: {
-                Text("Ingrédients")
-            } footer: {
-                Text("Séparez par des virgules ou « et ». Vous pourrez ensuite les envoyer aux courses.")
+            if meal == nil {
+                Section {
+                    TextField("2 oignons, du riz, de la crème…", text: $ingredients, axis: .vertical)
+                        .lineLimit(2...6)
+                } header: {
+                    Text("Ingrédients")
+                } footer: {
+                    Text("Séparez par des virgules ou « et ». Vous pourrez ensuite les envoyer aux courses.")
+                }
+            } else {
+                Section {
+                    TextField("Notes", text: $notes, axis: .vertical).lineLimit(2...6)
+                } footer: {
+                    if meal?.isRecurring == true { Text("Repas récurrent : seul ce jour-là est modifié.") }
+                }
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Nouveau repas")
+        .navigationTitle(meal == nil ? "Nouveau repas" : "Modifier le repas")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Ajouter") {
+                Button(meal == nil ? "Ajouter" : "Enregistrer") {
                     Task {
                         saving = true
-                        let ok = await model.create(date: TodayBuckets.dayKey(day), kind: kind,
-                                                    title: title.trimmingCharacters(in: .whitespaces),
-                                                    ingredients: ingredients)
+                        let name = title.trimmingCharacters(in: .whitespaces)
+                        let date = TodayBuckets.dayKey(day)
+                        let ok = if let meal {
+                            await model.update(meal, date: date, kind: kind, title: name, notes: notes)
+                        } else {
+                            await model.create(date: date, kind: kind, title: name, ingredients: ingredients)
+                        }
                         saving = false
-                        if ok { dismiss() }
+                        if ok { dismiss(); onSaved() }
                     }
                 }
                 .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || saving)
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .task { titleFocused = true }
+        .task { if meal == nil { titleFocused = true } }
     }
 }

@@ -62,7 +62,7 @@ struct CalendarView: View {
             }
         }
         .sheet(isPresented: $creating) {
-            NavigationStack { NewEventView(model: model) }
+            NavigationStack { EventEditorView(model: model) }
                 #if os(macOS)
                 .frame(minWidth: 460, minHeight: 480)
                 #endif

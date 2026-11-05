@@ -61,6 +61,24 @@ final class MealsModel {
             let meal = try await client.createMeal(date: date, kind: kind, title: title,
                                                    ingredients: ShoppingEntry.parse(ingredients))
             if let week, week.start <= meal.date, meal.date <= week.end { self.week?.meals.append(meal) }
+            WidgetCenter.shared.reloadTimelines(ofKind: "fr.sugow.yuvomi.agenda")
+            return true
+        } catch {
+            errorMessage = error.userMessage
+            return false
+        }
+    }
+
+    /// Returns false on failure. A meal moved out of the shown week leaves it.
+    func update(_ meal: Meal, date: String, kind: Meal.Kind, title: String, notes: String) async -> Bool {
+        do {
+            let saved = try await client.updateMeal(meal.id, date: date, kind: kind, title: title, notes: notes)
+            if let week, week.start <= saved.date, saved.date <= week.end {
+                update(meal.id) { $0 = saved }
+            } else {
+                self.week?.meals.removeAll { $0.id == meal.id }
+            }
+            WidgetCenter.shared.reloadTimelines(ofKind: "fr.sugow.yuvomi.agenda")
             return true
         } catch {
             errorMessage = error.userMessage
@@ -73,6 +91,7 @@ final class MealsModel {
         week?.meals.removeAll { $0.id == meal.id }
         do {
             try await client.deleteMeal(meal.id)
+            WidgetCenter.shared.reloadTimelines(ofKind: "fr.sugow.yuvomi.agenda")
             return true
         } catch {
             week = backup

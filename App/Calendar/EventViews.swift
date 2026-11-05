@@ -5,6 +5,7 @@ struct EventDetailView: View {
     let model: CalendarModel
     let event: CalendarEvent
     @State private var confirmDelete = false
+    @State private var editing = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -56,6 +57,18 @@ struct EventDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar {
+            if event.isEditable {
+                ToolbarItem(placement: .primaryAction) { Button("Modifier") { editing = true } }
+            }
+        }
+        .sheet(isPresented: $editing) {
+            // Times may change, and with them the event's identity in the list: go back to it.
+            NavigationStack { EventEditorView(model: model, event: event) { dismiss() } }
+                #if os(macOS)
+                .frame(minWidth: 460, minHeight: 480)
+                #endif
+        }
         .confirmationDialog("Supprimer « \(event.title) » ?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) {
                 Task { if await model.delete(event) { dismiss() } }
@@ -76,19 +89,27 @@ struct EventDetailView: View {
     }
 }
 
-struct NewEventView: View {
+/// Create (`event == nil`) or edit a plain local event.
+struct EventEditorView: View {
     let model: CalendarModel
+    var event: CalendarEvent?
+    var onSaved: () -> Void = {}
     @State private var draft: EventDraft
     @State private var saving = false
     @FocusState private var titleFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
-    init(model: CalendarModel) {
+    init(model: CalendarModel, event: CalendarEvent? = nil, onSaved: @escaping () -> Void = {}) {
         self.model = model
-        // Next full hour, one hour long.
-        let calendar = Calendar.current
-        let hour = calendar.dateInterval(of: .hour, for: .now)?.end ?? .now
-        _draft = State(initialValue: EventDraft(start: hour, end: hour.addingTimeInterval(3600)))
+        self.event = event
+        self.onSaved = onSaved
+        if let event {
+            _draft = State(initialValue: EventDraft(event))
+        } else {
+            // Next full hour, one hour long.
+            let hour = Calendar.current.dateInterval(of: .hour, for: .now)?.end ?? .now
+            _draft = State(initialValue: EventDraft(start: hour, end: hour.addingTimeInterval(3600)))
+        }
     }
 
     var body: some View {
@@ -126,7 +147,7 @@ struct NewEventView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Nouvel événement")
+        .navigationTitle(event == nil ? "Nouvel événement" : "Modifier")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -137,18 +158,19 @@ struct NewEventView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Ajouter") {
+                Button(event == nil ? "Ajouter" : "Enregistrer") {
                     Task {
                         saving = true
-                        if await model.create(draft) { dismiss() }
+                        let ok = if let event { await model.update(event, with: draft) } else { await model.create(draft) }
                         saving = false
+                        if ok { dismiss(); onSaved() }
                     }
                 }
                 .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty || saving)
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .task { titleFocused = true }
+        .task { if event == nil { titleFocused = true } }
     }
 
     private func toggle(_ id: Int) {
