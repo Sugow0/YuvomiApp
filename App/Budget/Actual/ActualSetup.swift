@@ -12,12 +12,7 @@ struct BudgetRootView: View {
             if let config = app.actualConfig {
                 ActualBudgetView(config: config).id(config.budgetID)
             } else {
-                BudgetView(client: client)
-                    .toolbar {
-                        ToolbarItem(placement: .secondaryAction) {
-                            Button("Connecter Actual Budget", systemImage: "link") { connecting = true }
-                        }
-                    }
+                BudgetView(client: client) { connecting = true }
             }
         }
         .sheet(isPresented: $connecting) {

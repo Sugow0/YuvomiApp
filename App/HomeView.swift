@@ -1,7 +1,10 @@
 import SwiftUI
 import YuvomiKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
-/// Sidebar on iPad/Mac, stack on iPhone — `NavigationSplitView` adapts by itself.
+/// iPhone : onglets et barre en verre (`CompactHome`). iPad et Mac : barre latérale.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     let credential: DeviceCredential
@@ -32,11 +35,35 @@ struct HomeView: View {
         }
     }
 
-    @State private var selection: Section? = .shopping
+    @State private var selection: Section? = .today
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
 
     private var client: YuvomiClient { YuvomiClient(credential: credential) }
 
     var body: some View {
+        Group {
+            #if os(iOS)
+            // Un iPhone Plus/Pro Max en paysage passe en classe « regular » : il garde ses onglets.
+            if sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone {
+                CompactHome(selection: $selection, credential: credential, user: user)
+            } else {
+                splitView
+            }
+            #else
+            splitView
+            #endif
+        }
+        .onChange(of: model.requestedSection, initial: true) { _, section in
+            guard let section else { return }
+            selection = section
+            model.requestedSection = nil
+        }
+    }
+
+    /// iPad et Mac : barre latérale.
+    private var splitView: some View {
         NavigationSplitView {
             List(Section.allCases, selection: $selection) { section in
                 Label(section.rawValue, systemImage: section.icon).tag(section)
@@ -58,11 +85,6 @@ struct HomeView: View {
                 case .settings: SettingsView(credential: credential, user: user)
                 }
             }
-        }
-        .onChange(of: model.requestedSection, initial: true) { _, section in
-            guard let section else { return }
-            selection = section
-            model.requestedSection = nil
         }
     }
 }
