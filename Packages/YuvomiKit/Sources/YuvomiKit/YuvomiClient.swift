@@ -4,9 +4,17 @@ import Foundation
 public struct YuvomiClient: Sendable {
     let http: HTTP
 
-    public init(credential: DeviceCredential, session: URLSession = .shared) {
+    public init(credential: DeviceCredential, session: URLSession = YuvomiClient.session) {
         http = HTTP(server: credential.server, session: session, bearer: credential.token)
     }
+
+    /// Gives up after 15 s instead of 60 s, so a bad network falls back to offline mode quickly.
+    public static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
 
     public struct User: Sendable, Decodable, Hashable {
         public let id: Int

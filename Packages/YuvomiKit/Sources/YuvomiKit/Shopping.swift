@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Models (server/routes/shopping.js, server/db.js)
 
-public struct ShoppingList: Sendable, Hashable, Identifiable, Decodable {
+public struct ShoppingList: Sendable, Hashable, Identifiable, Codable {
     public let id: Int
     public let name: String
     /// `COUNT` / `SUM` in `GET /shopping`; absent elsewhere, `null` for an empty list.
@@ -12,7 +12,7 @@ public struct ShoppingList: Sendable, Hashable, Identifiable, Decodable {
     public var openCount: Int { (itemTotal ?? 0) - (itemChecked ?? 0) }
 }
 
-public struct ShoppingItem: Sendable, Hashable, Identifiable, Decodable {
+public struct ShoppingItem: Sendable, Hashable, Identifiable, Codable {
     public let id: Int
     public let listId: Int
     public var name: String
@@ -46,7 +46,7 @@ public struct ShoppingItem: Sendable, Hashable, Identifiable, Decodable {
     }
 }
 
-public struct ShoppingCategory: Sendable, Hashable, Identifiable, Decodable {
+public struct ShoppingCategory: Sendable, Hashable, Identifiable, Codable {
     public let id: Int
     public let name: String
     /// Lucide icon name from the web app (`apple`, `milk`, …).
@@ -54,11 +54,15 @@ public struct ShoppingCategory: Sendable, Hashable, Identifiable, Decodable {
     public let sortOrder: Int
 }
 
-public struct ShoppingListContents: Sendable, Hashable {
+public struct ShoppingListContents: Sendable, Hashable, Codable {
     public let list: ShoppingList
     /// Already in aisle order: category, then unchecked first.
     public let items: [ShoppingItem]
     public let categories: [ShoppingCategory]
+
+    public init(list: ShoppingList, items: [ShoppingItem], categories: [ShoppingCategory]) {
+        self.list = list; self.items = items; self.categories = categories
+    }
 }
 
 // MARK: - Endpoints
