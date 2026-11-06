@@ -8,11 +8,13 @@ import YuvomiKit
 enum IntentFailure: Error, CustomLocalizedStringResourceConvertible {
     case signedOut
     case noShoppingList
+    case noRecipe
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .signedOut: "Connectez-vous d'abord dans l'app Yuvomi."
         case .noShoppingList: "Aucune liste de courses sur votre serveur."
+        case .noRecipe: "Aucune recette classée « Plat » (Mealie) ou proposée dans le planning auto."
         }
     }
 }
@@ -185,6 +187,167 @@ struct TodayMealsIntent: AppIntent {
     }
 }
 
+/// How far one run plans: one shopping trip.
+enum PlanPeriod: String, AppEnum {
+    case week, halfMonth, month
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Période"
+    static let caseDisplayRepresentations: [PlanPeriod: DisplayRepresentation] = [
+        .week: DisplayRepresentation(title: "la semaine", subtitle: "Aujourd'hui + 6 jours · automatisation chaque lundi"),
+        .halfMonth: DisplayRepresentation(title: "la quinzaine", subtitle: "1–15 ou 16–fin du mois · automatisation le 1 et le 16"),
+        .month: DisplayRepresentation(title: "le mois", subtitle: "Jusqu'à la fin du mois · automatisation le 1"),
+    ]
+
+    var span: PlanSpan {
+        switch self {
+        case .week: .week
+        case .halfMonth: .halfMonth
+        case .month: .month
+        }
+    }
+}
+
+/// Run by a Shortcuts automation at 00:00 (each Monday, the 1st and 16th, or the 1st): fills lunch
+/// and dinner for the period with the household's recipes, then puts their ingredients on a list.
+/// Slots already planned are kept, so running it again adds nothing.
+struct PlanMonthMealsIntent: AppIntent {
+    static let title: LocalizedStringResource = "Planifier les repas"
+    static let description = IntentDescription(
+        "Planifie quelques grosses recettes pour midi et soir (avec leurs restes) et des desserts, puis ajoute les ingrédients aux courses."
+    )
+
+    @Parameter(title: "Période", default: .month)
+    var period: PlanPeriod
+
+    @Parameter(title: "Liste")
+    var list: ShoppingListEntity?
+
+    @Parameter(title: "Personnes à chaque repas", default: 2, inclusiveRange: (1, 12))
+    var people: Int
+
+    @Parameter(title: "Desserts par semaine", default: 3, inclusiveRange: (0, 7))
+    var dessertsPerWeek: Int
+
+    @Parameter(title: "Vider aussi les articles non cochés", default: false)
+    var clearUnchecked: Bool
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Planifier \(\.$period) et remplir \(\.$list)") {
+            \.$people
+            \.$dessertsPerWeek
+            \.$clearUnchecked
+        }
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<Int> {
+        let client = try signedInClient()
+        guard let target = try await resolvedList() else { throw IntentFailure.noShoppingList }
+
+        let settings = AutoPlanSettings()
+        settings.people = people // "Remplacer" in the app sizes cookings the same way
+        let roles = try await RecipeRoles.load(for: client.recipes(), settings: settings)
+        let dishes = roles.dishes
+        let desserts = roles.desserts
+        guard !dishes.isEmpty else { throw IntentFailure.noRecipe }
+
+        let days = MonthPlanner.days(period.span, from: .now)
+        let history = try await client.recipeHistory(around: days)
+        var rng = SystemRandomNumberGenerator()
+        let batches = BatchPlanner.plan(
+            days: days, dishes: dishes, desserts: desserts,
+            options: .init(people: people, dessertsPerWeek: dessertsPerWeek), history: history, using: &rng
+        )
+        let created = try await client.applyPlan(batches.flatMap(\.meals))
+
+        let range = Self.range(days)
+        guard !created.isEmpty else {
+            return .result(value: 0, dialog: "Tout est déjà planifié \(range).")
+        }
+        // A rerun in the same period (a meal deleted, to be replaced) only tops the list up.
+        let periodID = period.span.periodID(for: .now)
+        let newPeriod = settings.lastPeriodID != periodID
+        var open = try await clearList(target.id, emptyingOpenItems: newPeriod && clearUnchecked, client: client)
+
+        // Each cooking is bought once, scaled, when any of its meals was planned now; added to
+        // what is still open on the list.
+        let createdSlots = Set(created.map { "\($0.date)|\($0.kind.rawValue)" })
+        let cooked = batches.filter { $0.meals.contains { createdSlots.contains("\($0.date)|\($0.kind.rawValue)") } }
+        let items = try await open.put(cooked.flatMap(\.shopping), using: client)
+        // Remember what this run made, so "Annuler le planning" can take it back.
+        let earlier = newPeriod ? [] : (settings.lastRun.map { $0.listID == target.id ? $0.mealIDs : [] } ?? [])
+        settings.lastRun = AutoPlanRun(mealIDs: earlier + created.map(\.id), firstDay: days.first ?? "",
+                                       lastDay: days.last ?? "", listID: target.id)
+        settings.lastPeriodID = periodID
+        reloadWidget()
+
+        let sentence = "\(created.count) repas planifiés \(range) avec \(cooked.count) recettes à cuisiner, "
+            + "\(items) articles mis dans \(target.name)."
+        return .result(value: created.count, dialog: IntentDialog(stringLiteral: sentence))
+    }
+
+    /// "du 16 au 30 novembre", "le 30 novembre".
+    private static func range(_ days: [String]) -> String {
+        func date(_ key: String?) -> Date? { key.flatMap(MealWeek.date) }
+        guard let first = date(days.first), let last = date(days.last) else { return "" }
+        let full = Date.FormatStyle.dateTime.day().month(.wide)
+        if days.count == 1 { return "le \(first.formatted(full))" }
+        let sameMonth = Calendar.current.isDate(first, equalTo: last, toGranularity: .month)
+        return "du \(first.formatted(sameMonth ? .dateTime.day() : full)) au \(last.formatted(full))"
+    }
+
+    /// Bought items always go; open ones only when asked. Returns the open items left, by match key.
+    private func clearList(_ listID: Int, emptyingOpenItems: Bool,
+                           client: YuvomiClient) async throws -> OpenShoppingItems {
+        let items = try await client.shoppingItems(listID: listID).items
+        let checked = items.filter(\.isChecked).map(\.id)
+        if !checked.isEmpty { try await client.clearCheckedShoppingItems(listID: listID, ids: checked) }
+        let open = items.filter { !$0.isChecked }
+        guard emptyingOpenItems else { return OpenShoppingItems(listID: listID, items: open) }
+        for item in open { try await client.deleteShoppingItem(item.id) }
+        return OpenShoppingItems(listID: listID, items: [])
+    }
+
+    private func resolvedList() async throws -> ShoppingListEntity? {
+        if let list { return list }
+        return await ShoppingListQuery().defaultResult()
+    }
+}
+
+/// Takes the last "Planifier les repas" run back: its meals go, and so do their ingredients
+/// (or the whole list). Meals added by hand stay.
+struct UndoMealPlanIntent: AppIntent {
+    static let title: LocalizedStringResource = "Annuler le planning"
+    static let description = IntentDescription(
+        "Supprime les repas créés par le dernier « Planifier les repas » et retire leurs ingrédients des courses."
+    )
+
+    @Parameter(title: "Vider toute la liste", default: false)
+    var emptyList: Bool
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Annuler le dernier planning") { \.$emptyList }
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let settings = AutoPlanSettings()
+        guard let run = settings.lastRun, !run.mealIDs.isEmpty else {
+            return .result(dialog: "Aucun planning automatique à annuler.")
+        }
+        try await requestConfirmation(dialog: "Supprimer les \(run.mealIDs.count) repas du dernier planning\(emptyList ? " et vider la liste" : "") ?")
+        let result = try await signedInClient().undo(run, people: settings.people, emptyingList: emptyList)
+        settings.forgetLastRun()
+        reloadWidget()
+        WidgetCenter.shared.reloadTimelines(ofKind: "fr.sugow.yuvomi.agenda")
+        return .result(dialog: IntentDialog(stringLiteral: UndoMealPlanIntent.sentence(result, emptied: emptyList)))
+    }
+
+    static func sentence(_ result: YuvomiClient.UndoResult, emptied: Bool) -> String {
+        let meals = "\(result.meals) repas supprimé\(result.meals > 1 ? "s" : "")"
+        return emptied ? "\(meals), liste vidée (\(result.items) articles)."
+                       : "\(meals), \(result.items) article\(result.items > 1 ? "s" : "") retiré\(result.items > 1 ? "s" : "") ou réduit\(result.items > 1 ? "s" : "")."
+    }
+}
+
 struct OpenShoppingIntent: AppIntent {
     static let title: LocalizedStringResource = "Ouvrir les courses"
     static let openAppWhenRun = true
@@ -257,6 +420,24 @@ struct YuvomiShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Repas du jour",
             systemImageName: "fork.knife"
+        )
+        AppShortcut(
+            intent: PlanMonthMealsIntent(),
+            phrases: [
+                "Planifie les repas du mois dans \(.applicationName)",
+                "Planifie le mois dans \(.applicationName)",
+            ],
+            shortTitle: "Planifier les repas",
+            systemImageName: "calendar.badge.plus"
+        )
+        AppShortcut(
+            intent: UndoMealPlanIntent(),
+            phrases: [
+                "Annule le planning des repas dans \(.applicationName)",
+                "Annule le planning dans \(.applicationName)",
+            ],
+            shortTitle: "Annuler le planning",
+            systemImageName: "arrow.uturn.backward.circle"
         )
         AppShortcut(
             intent: OpenShoppingIntent(),
