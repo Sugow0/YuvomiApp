@@ -47,6 +47,17 @@ extension StubbedNetwork { @Suite struct ShoppingTests {
         #expect(String(decoding: body, as: UTF8.self) == #"{"is_checked":true}"#)
     }
 
+    @Test func quantityPatchSendsOnlyTheAmountAndNullClears() async throws {
+        StubProtocol.routes = ["PATCH /api/v1/shopping/items/10": (200, """
+            {"data":{"id":10,"list_id":1,"name":"Œufs","quantity":"8","category":"Sonstiges","is_checked":0}}
+            """)]
+        let item = try await client.setShoppingItem(10, quantity: "8")
+        #expect(item.quantity == "8")
+        _ = try await client.setShoppingItem(10, quantity: nil)
+        let bodies = StubProtocol.seen.compactMap(\.httpBody).map { String(decoding: $0, as: UTF8.self) }
+        #expect(bodies == [#"{"quantity":"8"}"#, #"{"quantity":null}"#])
+    }
+
     @Test func addingSendsIdempotencyKey() async throws {
         StubProtocol.routes = ["POST /api/v1/shopping/1/items": (201, """
             {"data":{"id":12,"list_id":1,"name":"Œufs","category":"Sonstiges","is_checked":0}}

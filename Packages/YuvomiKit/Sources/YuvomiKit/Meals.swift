@@ -55,13 +55,15 @@ public struct Meal: Sendable, Hashable, Identifiable, Decodable {
     public let cookName: String?
     public let cookColor: String?
     public let recipeURL: String?
+    /// The recipe the meal was planned from, if any.
+    public let recipeID: Int?
     public let isRecurring: Bool
     public var ingredients: [Ingredient]
     /// Ingredients still held by a linked recipe (copied over on transfer).
     public let recipeIngredientCount: Int
 
     enum CodingKeys: String, CodingKey {
-        case id, date, mealType, title, notes, cookName, cookColor, recipeUrl, recurrenceTemplateId
+        case id, date, mealType, title, notes, cookName, cookColor, recipeUrl, recipeId, recurrenceTemplateId
         case ingredients, recipeIngredientCount
     }
 
@@ -75,13 +77,15 @@ public struct Meal: Sendable, Hashable, Identifiable, Decodable {
         cookName = try? c.decodeIfPresent(String.self, forKey: .cookName)
         cookColor = try? c.decodeIfPresent(String.self, forKey: .cookColor)
         recipeURL = try? c.decodeIfPresent(String.self, forKey: .recipeUrl)
+        recipeID = (try? c.decodeIfPresent(Int.self, forKey: .recipeId)) ?? nil
         isRecurring = (try? c.decodeIfPresent(Int.self, forKey: .recurrenceTemplateId)) != nil
         ingredients = (try? c.decodeIfPresent([Ingredient].self, forKey: .ingredients)) ?? []
         recipeIngredientCount = (try? c.decodeIfPresent(Int.self, forKey: .recipeIngredientCount)) ?? 0
     }
 
-    public init(id: Int, date: String, kind: Kind, title: String, ingredients: [Ingredient] = []) {
-        self.id = id; self.date = date; self.kind = kind; self.title = title; self.ingredients = ingredients
+    public init(id: Int, date: String, kind: Kind, title: String, recipeID: Int? = nil, ingredients: [Ingredient] = []) {
+        self.id = id; self.date = date; self.kind = kind; self.title = title; self.recipeID = recipeID
+        self.ingredients = ingredients
         notes = nil; cookName = nil; cookColor = nil; recipeURL = nil; isRecurring = false; recipeIngredientCount = 0
     }
 
@@ -113,7 +117,7 @@ public struct MealWeek: Sendable, Equatable {
 
     public var pendingIngredients: Int { meals.reduce(0) { $0 + $1.pendingIngredients } }
 
-    static func date(_ key: String) -> Date? {
+    public static func date(_ key: String) -> Date? {
         let p = key.split(separator: "-").compactMap { Int($0) }
         guard p.count == 3 else { return nil }
         return Calendar.current.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))

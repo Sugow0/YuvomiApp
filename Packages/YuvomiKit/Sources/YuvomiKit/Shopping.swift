@@ -102,6 +102,21 @@ extension YuvomiClient {
         ).data
     }
 
+    /// `nil` clears the amount.
+    public func setShoppingItem(_ itemID: Int, quantity: String?) async throws -> ShoppingItem {
+        struct Body: Encodable, Sendable {
+            let quantity: String?
+            func encode(to encoder: any Encoder) throws {
+                var c = encoder.singleValueContainer()
+                try c.encode(["quantity": quantity]) // null clears; absent would keep the old amount
+            }
+        }
+        return try await http.send(
+            "PATCH", "api/v1/shopping/items/\(itemID)", body: Body(quantity: quantity),
+            as: DataEnvelope<ShoppingItem>.self
+        ).data
+    }
+
     public func deleteShoppingItem(_ itemID: Int) async throws {
         _ = try await http.send("DELETE", "api/v1/shopping/items/\(itemID)", as: Empty.self)
     }

@@ -29,13 +29,14 @@ extension StubbedNetwork { @Suite struct MealsTests {
     @Test func weekDecodesCamelCaseBoundsAndFlags() async throws {
         StubProtocol.routes = ["GET /api/v1/meals": (200, """
             {"data":[{"id":7,"date":"2026-11-05","meal_type":"dinner","title":"Lasagnes","notes":null,
-                      "recurrence_template_id":3,"cook_name":"Sam","recipe_ingredient_count":0,
+                      "recurrence_template_id":3,"cook_name":"Sam","recipe_id":12,"recipe_ingredient_count":0,
                       "ingredients":[{"id":1,"meal_id":7,"name":"Pâtes","quantity":"500 g","on_shopping_list":1}]}],
              "weekStart":"2026-11-02","weekEnd":"2026-11-08"}
             """)]
         let week = try await client.mealWeek(containing: "2026-11-05")
         #expect(week.start == "2026-11-02")
         #expect(week.meals.first?.isRecurring == true)
+        #expect(week.meals.first?.recipeID == 12)
         #expect(week.meals.first?.ingredients.first?.onShoppingList == true)
         #expect(StubProtocol.seen.first?.url?.query() == "week=2026-11-05")
     }
