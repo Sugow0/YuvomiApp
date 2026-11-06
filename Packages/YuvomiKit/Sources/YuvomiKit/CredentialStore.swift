@@ -41,6 +41,12 @@ public struct KeychainCredentialStore: CredentialStore {
         return id
     }
 
+    // MARK: - Other secrets (e.g. the Actual Budget API key)
+
+    public func secret(_ account: String) throws -> Data? { try read(account) }
+    public func setSecret(_ account: String, _ data: Data) throws { try write(account, data) }
+    public func removeSecret(_ account: String) throws { try delete(account) }
+
     // MARK: - Keychain primitives
 
     private func query(_ account: String, group: Bool = true) -> [String: Any] {
