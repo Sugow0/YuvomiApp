@@ -7,6 +7,7 @@ struct YuvomiWidgets: WidgetBundle {
     var body: some Widget {
         TodayWidget()
         AgendaWidget()
+        ShoppingWidget()
     }
 }
 
