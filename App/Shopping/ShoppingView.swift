@@ -6,6 +6,7 @@ struct ShoppingView: View {
     @State private var newItem = ""
     @FocusState private var addFieldFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(AppModel.self) private var app
 
     init(client: YuvomiClient) {
         _model = State(initialValue: ShoppingModel(client: client))
@@ -44,8 +45,11 @@ struct ShoppingView: View {
         .overlay { emptyState }
         .navigationTitle(model.selectedList?.name ?? "Courses")
         .toolbar { toolbar }
+        .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner(offline: model.isOffline) }
+        .animation(.default, value: model.isOffline)
         .refreshable { await model.load() }
         .task { await model.load() }
+        .onChange(of: app.syncGeneration) { Task { await model.load() } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await model.load() } }
         }

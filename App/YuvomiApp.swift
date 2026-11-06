@@ -17,13 +17,14 @@ struct YuvomiApp: App {
                 .task { await model.restore() }
                 .onOpenURL { model.handle(url: $0) }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await model.syncReminders() } }
+                    if phase == .active { Task { await model.flushOutbox(); await model.syncReminders() } }
                 }
         }
         #if os(macOS)
         .defaultSize(width: 1000, height: 700)
         #else
         .backgroundTask(.appRefresh(ReminderScheduler.refreshTaskID)) {
+            await AppModel.shared?.flushOutbox()
             await AppModel.shared?.syncReminders()
         }
         #endif

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import WidgetKit
 import YuvomiKit
@@ -26,9 +27,47 @@ final class AppModel {
     let reminders = ReminderScheduler()
     private let store: CredentialStore
 
+    /// Network reachability, for the offline banner and to resend queued edits.
+    private(set) var isOnline = true
+    /// Edits made offline that the server has not seen yet.
+    private(set) var pendingChanges = Outbox.count
+    /// Bumped when queued edits reached the server; screens reload on change.
+    private(set) var syncGeneration = 0
+    private let pathMonitor = NWPathMonitor()
+
     init(store: CredentialStore = AppGroup.credentialStore()) {
         self.store = store
         Self.shared = self
+        pathMonitor.pathUpdateHandler = { path in
+            let online = path.status == .satisfied
+            Task { @MainActor in AppModel.shared?.networkChanged(online: online) }
+        }
+        pathMonitor.start(queue: .main)
+    }
+
+    // MARK: - Offline edits
+
+    /// Sends what was queued offline.
+    /// - Parameter notify: bump `syncGeneration` so open screens reload. Screens that
+    ///   flush right before fetching pass false.
+    func flushOutbox(notify: Bool = true) async {
+        refreshPending()
+        guard let credential, pendingChanges > 0 else { return }
+        let result = await Outbox.flush(YuvomiClient(credential: credential))
+        refreshPending()
+        guard result.sent + result.dropped > 0 else { return }
+        WidgetCenter.shared.reloadAllTimelines()
+        if notify { syncGeneration += 1 }
+    }
+
+    func refreshPending() {
+        pendingChanges = Outbox.count
+    }
+
+    private func networkChanged(online: Bool) {
+        let regained = online && !isOnline
+        isOnline = online
+        if regained { Task { await flushOutbox() } }
     }
 
     var credential: DeviceCredential? {
@@ -48,6 +87,7 @@ final class AppModel {
         }
         state = .signedIn(credential, nil)
         await refreshUser(credential)
+        await flushOutbox()
         await syncReminders()
     }
 
@@ -72,6 +112,9 @@ final class AppModel {
         try? store.clear()
         await reminders.removeAll()
         SnapshotStore.clear()
+        Outbox.clear()
+        OfflineCache.clear()
+        refreshPending()
         WidgetCenter.shared.reloadAllTimelines()
         state = .signedOut
     }
@@ -83,6 +126,7 @@ final class AppModel {
         case "calendar": requestedSection = .calendar; return
         case "meals": requestedSection = .meals; return
         case "notes": requestedSection = .notes; return
+        case "budget": requestedSection = .budget; return
         default: break
         }
         guard let link = PairingLink(url) else { return }

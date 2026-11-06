@@ -7,6 +7,7 @@ struct TasksView: View {
     @State private var showUndated = true
     @FocusState private var addFieldFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(AppModel.self) private var app
 
     init(client: YuvomiClient, userID: Int?) {
         _model = State(initialValue: TasksModel(client: client, userID: userID))
@@ -63,8 +64,11 @@ struct TasksView: View {
             }
             #endif
         }
+        .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner(offline: model.isOffline) }
+        .animation(.default, value: model.isOffline)
         .refreshable { await model.load() }
         .task { await model.load() }
+        .onChange(of: app.syncGeneration) { Task { await model.load() } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await model.load() } }
         }

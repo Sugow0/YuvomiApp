@@ -52,10 +52,12 @@ struct TodayProvider: TimelineProvider {
             return entry(state: .signedOut, tasks: [], todayKey: todayKey, snapshot: nil)
         }
         let client = YuvomiClient(credential: credential)
+        await Outbox.flush(client)
         do {
             async let tasks = client.tasks()
             async let lists = client.shoppingLists()
-            let (fetchedTasks, fetchedLists) = try await (tasks, lists)
+            let (serverTasks, fetchedLists) = try await (tasks, lists)
+            let fetchedTasks = Outbox.apply(to: serverTasks)
             // Widgets reload every 15–60 min: a free chance to pick up new reminders.
             _ = try? await LocalReminders.sync(client)
             let selectedID = AppGroup.defaults.object(forKey: "shopping.selectedList") as? Int
@@ -68,7 +70,7 @@ struct TodayProvider: TimelineProvider {
             return entry(state: .ready, tasks: fetchedTasks, todayKey: todayKey, snapshot: SnapshotStore.load())
         } catch {
             let snapshot = SnapshotStore.load()
-            return entry(state: .stale, tasks: snapshot?.tasks ?? [], todayKey: todayKey, snapshot: snapshot)
+            return entry(state: .stale, tasks: Outbox.apply(to: snapshot?.tasks ?? []), todayKey: todayKey, snapshot: snapshot)
         }
     }
 
