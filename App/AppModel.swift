@@ -35,6 +35,13 @@ final class AppModel {
     private(set) var syncGeneration = 0
     private let pathMonitor = NWPathMonitor()
 
+    /// Set when the Budget section reads Actual Budget instead of Yuvomi's budget.
+    var actualConfig: ActualConfig? = ActualStore.load() {
+        didSet {
+            if let actualConfig { try? ActualStore.save(actualConfig) } else { ActualStore.clear() }
+        }
+    }
+
     init(store: CredentialStore = AppGroup.credentialStore()) {
         self.store = store
         Self.shared = self
@@ -114,6 +121,7 @@ final class AppModel {
         SnapshotStore.clear()
         Outbox.clear()
         OfflineCache.clear()
+        actualConfig = nil
         refreshPending()
         WidgetCenter.shared.reloadAllTimelines()
         state = .signedOut

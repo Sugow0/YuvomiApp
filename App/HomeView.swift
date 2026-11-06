@@ -53,7 +53,7 @@ struct HomeView: View {
                 case .calendar: CalendarView(client: client)
                 case .meals: MealsView(client: client)
                 case .notes: NotesView(client: client)
-                case .budget: BudgetView(client: client)
+                case .budget: BudgetRootView(client: client)
                 case .tasks: AllTasksView(client: client, userID: user?.id)
                 case .settings: SettingsView(credential: credential, user: user)
                 }
@@ -79,6 +79,7 @@ struct SettingsView: View {
                 LabeledContent("Serveur", value: credential.server.origin.host() ?? credential.server.origin.absoluteString)
             }
             RemindersSettingsSection(reminders: model.reminders)
+            ActualSettingsSection()
             Section {
                 Button("Se déconnecter de cet appareil", role: .destructive) {
                     Task { await model.signOut() }
