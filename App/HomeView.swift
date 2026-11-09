@@ -108,6 +108,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .clearsTabBar()
         .formStyle(.grouped)
         .navigationTitle("Réglages")
     }

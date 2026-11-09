@@ -47,6 +47,7 @@ struct TasksView: View {
                 }
             }
         }
+        .clearsTabBar()
         .animation(.default, value: model.tasks)
         .overlay { if model.isLoading && model.tasks.isEmpty { ProgressView() } }
         .navigationTitle("Aujourd'hui")

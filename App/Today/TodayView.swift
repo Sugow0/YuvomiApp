@@ -40,6 +40,7 @@ struct TodayView: View {
             .animation(.ySnappy, value: model.tasks)
             .animation(.ySmooth, value: extras.highlight)
         }
+        .clearsTabBar()
         .foregroundStyle(Palette.ink)
         .background(Palette.porcelain)
         .scrollDismissesKeyboard(.interactively)

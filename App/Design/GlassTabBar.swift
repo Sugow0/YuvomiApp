@@ -41,6 +41,9 @@ struct GlassTabBar: View {
 
     @Namespace private var pill
 
+    /// Place à laisser sous le contenu : la barre (72 points avec sa marge) et un peu d'air.
+    static let clearance: CGFloat = 84
+
     var body: some View {
         HStack(spacing: 4) {
             ForEach(HomeTab.allCases) { item in

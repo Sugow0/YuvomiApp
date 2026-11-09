@@ -538,6 +538,7 @@ struct MealDetailView: View {
                     }
                 }
             }
+            .clearsTabBar()
             .formStyle(.grouped)
             .navigationTitle(meal.title)
             #if os(iOS)

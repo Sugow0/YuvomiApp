@@ -123,6 +123,7 @@ struct TaskEditorView: View {
                 }
             }
         }
+        .clearsTabBar()
         .formStyle(.grouped)
         .navigationTitle(isNew ? "Nouvelle tâche" : "Tâche")
         #if os(iOS)

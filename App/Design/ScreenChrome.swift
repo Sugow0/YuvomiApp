@@ -181,6 +181,7 @@ private struct ScreenChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .clearsTabBar()
             .foregroundStyle(Palette.ink)
             .background(Palette.porcelain)
             .navigationTitle(title)
@@ -194,6 +195,21 @@ extension EnvironmentValues {
     /// Vrai dans les onglets de l'iPhone (`CompactHome`) : la racine de chaque onglet a son
     /// en-tête maison et se passe de la barre de navigation.
     @Entry var usesScreenHeaders = false
+    /// Hauteur de la barre flottante de l'iPhone sous le contenu ; 0 ailleurs.
+    @Entry var tabBarClearance: CGFloat = 0
+}
+
+private struct ClearsTabBar: ViewModifier {
+    @Environment(\.tabBarClearance) private var clearance
+
+    func body(content: Content) -> some View {
+        content.safeAreaPadding(.bottom, clearance)
+    }
+}
+
+extension View {
+    /// À poser sur le conteneur défilant d'un écran, pour que sa fin passe au-dessus de la barre.
+    func clearsTabBar() -> some View { modifier(ClearsTabBar()) }
 }
 
 #if os(iOS)

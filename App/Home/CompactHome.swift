@@ -21,8 +21,9 @@ struct CompactHome: View {
         ZStack(alignment: .bottom) {
             content
                 .environment(\.usesScreenHeaders, true)
-                // Place pour la barre : le contenu défile dessous, visible à travers le verre.
-                .safeAreaPadding(.bottom, 76)
+                // Le contenu défile sous la barre, visible à travers le verre. La place se réserve
+                // écran par écran (`clearsTabBar`) : autour d'un NavigationStack, elle serait ignorée.
+                .environment(\.tabBarClearance, GlassTabBar.clearance)
                 .scaleEffect(isAdding ? 0.94 : 1, anchor: .top)
                 .allowsHitTesting(!isAdding)
                 .accessibilityHidden(isAdding)
@@ -257,6 +258,7 @@ struct MoreView: View {
             }
             .padding(.horizontal, 16)
         }
+        .clearsTabBar()
         .foregroundStyle(Palette.ink)
         .background(Palette.porcelain)
         .toolbarVisibility(.hidden, for: .navigationBar)

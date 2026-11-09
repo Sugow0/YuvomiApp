@@ -23,6 +23,7 @@ struct AllTasksView: View {
                 Section("Sans échéance", isExpanded: $showUndated) { rows(groups.undated, showDate: false) }
             }
         }
+        .clearsTabBar()
         .overlay { emptyState(groups) }
         .animation(.default, value: model.tasks)
         .searchable(text: $model.search, prompt: "Rechercher une tâche")
@@ -54,6 +55,7 @@ struct AllTasksView: View {
         }
         .sheet(isPresented: $creating) {
             NavigationStack { TaskEditorView(model: model, task: nil) }
+                .environment(\.tabBarClearance, 0) // une feuille recouvre la barre
                 #if os(macOS)
                 .frame(minWidth: 460, minHeight: 520)
                 #endif

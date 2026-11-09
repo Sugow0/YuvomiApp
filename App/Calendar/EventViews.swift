@@ -56,6 +56,7 @@ struct EventDetailView: View {
                 }
             }
         }
+        .clearsTabBar()
         .formStyle(.grouped)
         .navigationTitle("Événement")
         #if os(iOS)

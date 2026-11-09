@@ -43,6 +43,7 @@ struct NoteDetailView: View {
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
+            .clearsTabBar()
             .background(NoteColor.color(note.color).opacity(0.12))
             .navigationTitle(note.title?.isEmpty == false ? note.title! : "Note")
             #if os(iOS)

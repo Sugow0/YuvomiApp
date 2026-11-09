@@ -17,6 +17,7 @@ struct NotesView: View {
             section("Épinglées", model.pinned)
             section(model.pinned.isEmpty ? nil : "Autres", model.others)
         }
+        .clearsTabBar()
         .overlay {
             if model.visible.isEmpty {
                 if model.isLoading && model.notes.isEmpty {
