@@ -61,3 +61,35 @@ private func entry(_ name: String, _ quantity: String?, _ category: String? = ni
     #expect(ShoppingTotals.removing("2", from: "400 g") == .keep("400 g"))
     #expect(ShoppingTotals.removing("1 pincée", from: "3 pincée + au goût") == .keep("2 pincée + au goût"))
 }
+
+@Test func amountsWrittenInTheNameAreReadOut() {
+    // Mealie lines not linked to a food arrive whole in the name, with no quantity.
+    let totals = ShoppingTotals.combine([
+        entry("150 g Beurre", nil), entry("40 g Beurre", nil), entry("15 g Beurre doux", nil),
+        entry("2 c. à soupe d'huile d'olive", nil), entry("1 cuillère à soupe d’huile d'olive", nil),
+        entry("1 oignon", nil), entry("2 oignons", nil),
+        entry("Sel", nil), entry("1/2 citron", nil),
+    ])
+    #expect(totals == [
+        ShoppingTotal(name: "Beurre", quantity: "205 g", category: nil),
+        ShoppingTotal(name: "Huile d'olive", quantity: "3 c. à soupe", category: nil),
+        ShoppingTotal(name: "Oignon", quantity: "3", category: nil),
+        ShoppingTotal(name: "Sel", quantity: nil, category: nil),
+        ShoppingTotal(name: "Citron", quantity: "1/2", category: nil),
+    ])
+}
+
+@Test func variantsOfOneNameMatch() {
+    #expect(ShoppingTotals.matchKey("Oignons") == ShoppingTotals.matchKey("oignon"))
+    #expect(ShoppingTotals.matchKey("Beurre doux") == ShoppingTotals.matchKey("beurre"))
+    #expect(ShoppingTotals.matchKey("Beurre, fondu") == ShoppingTotals.matchKey("Beurre"))
+    #expect(ShoppingTotals.matchKey("Tomates (bien mûres)") == ShoppingTotals.matchKey("tomate"))
+    #expect(ShoppingTotals.matchKey("Riz") != ShoppingTotals.matchKey("Ri"))
+    #expect(ShoppingTotals.matchKey("Crème fraîche") != ShoppingTotals.matchKey("Crème"))
+}
+
+@Test func aNameWithItsOwnAmountAndAQuantityKeepsBoth() {
+    // A real quantity wins; the name is left as it is.
+    let totals = ShoppingTotals.combine([entry("Œufs", "3"), entry("2 œufs", nil)])
+    #expect(totals.map(\.quantity) == ["5"])
+}

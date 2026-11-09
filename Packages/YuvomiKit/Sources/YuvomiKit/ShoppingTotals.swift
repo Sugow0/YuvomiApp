@@ -21,14 +21,16 @@ public struct ShoppingTotal: Sendable, Hashable {
 /// Adds up the ingredients of many recipes, so a month of meals gives one line per ingredient
 /// ("5" eggs) instead of the first recipe's amount.
 ///
-/// Names match like the server's shopping rule: trimmed, whitespace collapsed, case-insensitive.
+/// Names match a little more loosely than the server's rule (trimmed, case-insensitive): plurals,
+/// a note after a comma or in brackets, and "doux" do not make another ingredient. An amount
+/// written in the name ("150 g Beurre", as Mealie sends lines not linked to a food) is read out.
 /// Amounts add up when they share a unit (g/kg and ml/cl/l convert); anything else is kept
 /// side by side ("2 + 400 g"), since guessing what "2 tomatoes" weigh would be wrong.
 public enum ShoppingTotals {
     public static func combine(_ ingredients: [RecipeIngredient]) -> [ShoppingTotal] {
         var order: [String] = []
         var groups: [String: [RecipeIngredient]] = [:]
-        for ingredient in ingredients {
+        for ingredient in ingredients.map(splittingAmountFromName) {
             let key = matchKey(ingredient.name)
             guard !key.isEmpty else { continue }
             if groups[key] == nil { order.append(key) }
@@ -88,7 +90,59 @@ public enum ShoppingTotals {
 
     /// The key two names share when the shopping list treats them as one item.
     public static func matchKey(_ name: String) -> String {
-        name.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+        var text = name.lowercased().replacingOccurrences(of: "’", with: "'")
+        if let cut = text.firstIndex(where: { $0 == "," || $0 == "(" }) { text = String(text[..<cut]) }
+        return text.split(whereSeparator: \.isWhitespace)
+            .filter { !neutralWords.contains(String($0)) }
+            .map { word in
+                // "oignons" and "oignon" are one; "riz" or "pois" keep their letter.
+                word.count > 3 && (word.hasSuffix("s") || word.hasSuffix("x")) && !word.hasSuffix("ss")
+                    ? String(word.dropLast()) : String(word)
+            }
+            .joined(separator: " ")
+    }
+
+    /// Words that say nothing about what to buy ("beurre doux" is the butter of every recipe).
+    private static let neutralWords: Set<String> = ["doux"]
+
+    // MARK: Amounts in names
+
+    /// Spoon units as recipes write them, to one label each.
+    private static let spoonUnits: [(variants: [String], label: String)] = [
+        (["cuillères à soupe", "cuillère à soupe", "cuil. à soupe", "c. à soupe", "c à soupe", "c.à.s.", "c.à.s", "càs", "cs"], "c. à soupe"),
+        (["cuillères à café", "cuillère à café", "cuil. à café", "c. à café", "c à café", "c.à.c.", "c.à.c", "càc", "cc"], "c. à café"),
+    ]
+    /// Units that may follow the number in a name, longest first.
+    private static let nameUnits: [String] = (spoonUnits.flatMap(\.variants) + [
+        "kg", "mg", "gr", "g", "ml", "cl", "dl", "l",
+        "pincées", "pincée", "gousses", "gousse", "tranches", "tranche", "sachets", "sachet",
+        "boîtes", "boîte", "brins", "brin", "feuilles", "feuille", "bottes", "botte",
+        "poignées", "poignée", "verres", "verre", "tasses", "tasse", "pots", "pot",
+    ]).sorted { $0.count > $1.count }
+
+    /// "150 g Beurre" → name "Beurre", quantity "150 g", when the line has no quantity of its own.
+    static func splittingAmountFromName(_ ingredient: RecipeIngredient) -> RecipeIngredient {
+        guard (ingredient.quantity ?? "").trimmingCharacters(in: .whitespaces).isEmpty else { return ingredient }
+        let text = ingredient.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let number = text.prefixMatch(of: /[0-9]+(?:[.,][0-9]+)?(?:\s*\/\s*[0-9]+)?|[½¼¾⅓⅔]/) else { return ingredient }
+        var amount = String(number.output)
+        var rest = text[number.range.upperBound...].drop { $0 == " " }
+        let lower = rest.lowercased()
+        if let unit = nameUnits.first(where: { unit in
+            lower.hasPrefix(unit) && (lower.count == unit.count || [" ", "'", "’"].contains(lower.dropFirst(unit.count).first.map(String.init) ?? ""))
+        }) {
+            amount += " " + (spoonUnits.first { $0.variants.contains(unit) }?.label ?? unit)
+            rest = rest.dropFirst(unit.count).drop { $0 == " " }
+        }
+        // "de sucre", "d'huile"
+        for connector in ["de ", "d'", "d’", "des "] where rest.lowercased().hasPrefix(connector) {
+            rest = rest.dropFirst(connector.count)
+            break
+        }
+        let name = rest.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return ingredient }
+        return RecipeIngredient(name: name.prefix(1).uppercased() + name.dropFirst(), quantity: amount,
+                                category: ingredient.category)
     }
 
     // MARK: Amounts
@@ -152,7 +206,8 @@ public enum ShoppingTotals {
         }
         guard let value else { return nil }
 
-        let label = rest.trimmingCharacters(in: .whitespaces)
+        var label = rest.trimmingCharacters(in: .whitespaces)
+        if let spoon = spoonUnits.first(where: { $0.variants.contains(label.lowercased()) }) { label = spoon.label }
         let lower = label.lowercased()
         if let (family, factor) = conversions[lower] {
             return Amount(value: value * factor, unitKey: family, unitLabel: family, original: text)
